@@ -35,7 +35,7 @@ export class SharpProcessorService {
     pipeline = pipeline.resize(config.width, config.height, {
       fit: this.mapFitStrategy(config.fit),
       position: 'center', // Crop desde el centro para cover
-      withoutEnlargement: true, // No agrandar imágenes pequeñas
+      // Permitir agrandamiento solo para avatares pequeños, mantener COVER sin restricciones
     });
 
     // Aplicar formato y compresión
