@@ -14,7 +14,6 @@ import {
   SliderImageStrategy,
   TestimonialImageStrategy,
 } from '../../infrastructure/strategies';
-import { ImageFormat } from '../../domain/enums';
 
 export type EntityType =
   | 'property'
@@ -119,7 +118,7 @@ export class ImageOptimizationService {
 
       // Si no hay FULL en webp, usar la primera variante como fallback
       if (!fullVariantUrl) {
-        fullVariantUrl = variants[0]?.url;
+        fullVariantUrl = variants[0]?.url ?? null;
         this.logger.warn(`⚠️ Using fallback URL: ${fullVariantUrl}`);
       }
 
