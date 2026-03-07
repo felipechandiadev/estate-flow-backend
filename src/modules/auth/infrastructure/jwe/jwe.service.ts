@@ -33,9 +33,9 @@ export class JweService implements OnModuleInit {
       const envPublicKey = this.configService.get<string>('JWE_PUBLIC_KEY');
 
       if (envPrivateKey && envPublicKey) {
-        // Use environment variables
-        privateKeyPem = envPrivateKey;
-        publicKeyPem = envPublicKey;
+        // Use environment variables - handle both Base64 and PEM formats
+        privateKeyPem = this.decodeKeyIfBase64(envPrivateKey);
+        publicKeyPem = this.decodeKeyIfBase64(envPublicKey);
       } else {
         // Fall back to file system (for local development)
         const privateKeyPath =
@@ -59,6 +59,29 @@ export class JweService implements OnModuleInit {
       this.publicKey = await this.jose.importSPKI(publicKeyPem, 'RSA-OAEP-256');
     } catch (error) {
       throw new Error(`Failed to load JWE keys: ${error.message}`);
+    }
+  }
+
+  private decodeKeyIfBase64(key: string): string {
+    try {
+      // Check if the key starts with BEGIN (PEM format)
+      if (key.includes('BEGIN') && key.includes('END')) {
+        return key; // Already in PEM format
+      }
+
+      // Try to decode as Base64
+      const decoded = Buffer.from(key, 'base64').toString('utf8');
+
+      // Verify it's valid PEM after decoding
+      if (decoded.includes('BEGIN') && decoded.includes('END')) {
+        return decoded;
+      }
+
+      // If neither format worked, return original
+      return key;
+    } catch {
+      // If decoding fails, assume it's already in correct format
+      return key;
     }
   }
 
