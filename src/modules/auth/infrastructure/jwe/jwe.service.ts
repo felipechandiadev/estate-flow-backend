@@ -25,18 +25,32 @@ export class JweService implements OnModuleInit {
 
   private async loadKeys() {
     try {
-      const privateKeyPath =
-        this.configService.get<string>('JWE_PRIVATE_KEY_PATH') ||
-        'keys/private.pem';
-      const publicKeyPath =
-        this.configService.get<string>('JWE_PUBLIC_KEY_PATH') ||
-        'keys/public.pem';
+      let privateKeyPem: string;
+      let publicKeyPem: string;
 
-      const privateKeyPem = fs.readFileSync(
-        path.resolve(privateKeyPath),
-        'utf8',
-      );
-      const publicKeyPem = fs.readFileSync(path.resolve(publicKeyPath), 'utf8');
+      // Try loading from environment variables first (for production/Render)
+      const envPrivateKey = this.configService.get<string>('JWE_PRIVATE_KEY');
+      const envPublicKey = this.configService.get<string>('JWE_PUBLIC_KEY');
+
+      if (envPrivateKey && envPublicKey) {
+        // Use environment variables
+        privateKeyPem = envPrivateKey;
+        publicKeyPem = envPublicKey;
+      } else {
+        // Fall back to file system (for local development)
+        const privateKeyPath =
+          this.configService.get<string>('JWE_PRIVATE_KEY_PATH') ||
+          'keys/private.pem';
+        const publicKeyPath =
+          this.configService.get<string>('JWE_PUBLIC_KEY_PATH') ||
+          'keys/public.pem';
+
+        privateKeyPem = fs.readFileSync(
+          path.resolve(privateKeyPath),
+          'utf8',
+        );
+        publicKeyPem = fs.readFileSync(path.resolve(publicKeyPath), 'utf8');
+      }
 
       this.privateKey = await this.jose.importPKCS8(
         privateKeyPem,
