@@ -11,6 +11,7 @@ export interface ProcessedImage {
 }
 
 @Injectable()
+@Injectable()
 export class SharpProcessorService {
   /**
    * Procesa una variante de imagen según la configuración
@@ -24,6 +25,10 @@ export class SharpProcessorService {
     config: VariantConfig,
     format: ImageFormat,
   ): Promise<ProcessedImage> {
+    // Para archivos grandes (>1MB), usar compresión más agresiva
+    const isLargeFile = buffer.length > 1024 * 1024;
+    const effort = isLargeFile ? 4 : 6; // Reducir effort para archivos grandes
+    
     let pipeline = sharp(buffer);
 
     // Resize según estrategia de fit
@@ -37,13 +42,13 @@ export class SharpProcessorService {
     switch (format) {
       case ImageFormat.WEBP:
         pipeline = pipeline.webp({
-          quality: config.quality.webp,
-          effort: 6, // Balance entre velocidad y compresión (0-6)
+          quality: isLargeFile ? Math.max(config.quality.webp - 5, 70) : config.quality.webp,
+          effort, // Reducido para archivos grandes
         });
         break;
       case ImageFormat.JPEG:
         pipeline = pipeline.jpeg({
-          quality: config.quality.jpeg,
+          quality: isLargeFile ? Math.max(config.quality.jpeg - 5, 75) : config.quality.jpeg,
           mozjpeg: true, // Mejor compresión
         });
         break;
