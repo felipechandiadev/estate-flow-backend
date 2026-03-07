@@ -5,7 +5,7 @@ import { v4 as uuid } from 'uuid';
 import { SharpProcessorService } from './sharp-processor.service';
 import { R2StorageService } from './r2-storage.service';
 import { Multimedia } from '../../../multimedia/domain/multimedia.entity';
-import { MultimediaVariant } from '../../domain/multimedia-variant.entity';
+import { MultimediaVariant, VariantType, ImageFormat } from '../../domain/multimedia-variant.entity';
 import { VariantConfig } from '../../infrastructure/strategies';
 import {
   PropertyImageStrategy,
@@ -44,13 +44,6 @@ export class ImageOptimizationService {
     private variantRepository: Repository<MultimediaVariant>,
   ) {}
 
-  /**
-   * Procesa y optimiza una imagen, generando todas las variantes necesarias
-   * @param file Archivo Multer
-   * @param entityType Tipo de entidad (property, blog, etc)
-   * @param entityId ID de la entidad
-   * @returns Multimedia con variantes creadas
-   */
   async processAndUpload(
     file: Express.Multer.File,
     entityType: EntityType,
@@ -68,102 +61,97 @@ export class ImageOptimizationService {
       // 1. Obtener metadata original
       const metadata = await this.sharpProcessor.getMetadata(file.buffer);
 
-      // 2. Comprimir original
-      const compressedOriginal = await this.sharpProcessor.compressOriginal(
-        file.buffer,
-        90,
-      );
+      // 2. Generar todas las variantes (SIN almacenar original)
+      const variants: Partial<MultimediaVariant>[] = [];
+      let fullVariantUrl: string | null = null;
+      let totalVariantSize = 0;
 
-      // 3. Upload original comprimida
-      const originalKey = `${entityType}/${entityId}/${imageId}_original.jpg`;
-      this.logger.log(`📤 Uploading original image to R2: ${originalKey}`);
-      const { url: originalUrl } = await this.r2Storage.upload(
-        compressedOriginal.buffer,
-        originalKey,
-        'image/jpeg',
-      );
-      this.logger.log(`✅ Original uploaded: ${originalUrl}`);
+      for (const config of strategy) {
+        for (const format of config.formats) {
+          try {
+            this.logger.debug(`⏳ Creating ${config.type}.${format}...`);
+            const processed = await this.sharpProcessor.processVariant(
+              file.buffer,
+              config,
+              format,
+            );
 
-    // 4. Generar todas las variantes
-    const variants: Partial<MultimediaVariant>[] = [];
-    let totalVariantSize = 0;
+            const key = `${entityType}/${entityId}/${imageId}_${config.type}.${format}`;
+            const { url } = await this.r2Storage.upload(
+              processed.buffer,
+              key,
+              `image/${format}`,
+            );
 
-    for (const config of strategy) {
-      for (const format of config.formats) {
-        try {
-          this.logger.debug(`⏳ Creating ${config.type}.${format}...`);
-          const processed = await this.sharpProcessor.processVariant(
-            file.buffer,
-            config,
-            format,
-          );
+            variants.push({
+              variantType: config.type,
+              format,
+              width: processed.width,
+              height: processed.height,
+              size: processed.size,
+              url,
+              r2Key: key,
+            });
 
-          const key = `${entityType}/${entityId}/${imageId}_${config.type}.${format}`;
-          const { url } = await this.r2Storage.upload(
-            processed.buffer,
-            key,
-            `image/${format}`,
-          );
+            // Usar la variante FULL como URL principal
+            if (config.type === VariantType.FULL && format === ImageFormat.WEBP) {
+              fullVariantUrl = url;
+            }
 
-          variants.push({
-            variantType: config.type,
-            format,
-            width: processed.width,
-            height: processed.height,
-            size: processed.size,
-            url,
-            r2Key: key,
-          });
+            totalVariantSize += processed.size;
 
-          totalVariantSize += processed.size;
-
-          this.logger.debug(
-            `  ✅ Created ${config.type}.${format} - ${processed.width}x${processed.height} - ${(processed.size / 1024).toFixed(2)}KB`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `  ❌ Failed to create ${config.type}.${format}: ${error?.message || String(error)}`,
-          );
-          // Continuar con las demás variantes incluso si una falla
+            this.logger.debug(
+              `  ✅ Created ${config.type}.${format} - ${processed.width}x${processed.height} - ${(processed.size / 1024).toFixed(2)}KB`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `  ❌ Failed to create ${config.type}.${format}: ${error?.message || String(error)}`,
+            );
+            // Continuar con las demás variantes incluso si una falla
+          }
         }
       }
-    }
 
-    if (variants.length === 0) {
-      this.logger.warn(`⚠️ No variants were created, but original was uploaded`);
-    }
+      if (variants.length === 0) {
+        this.logger.warn(`⚠️ No variants were created`);
+        throw new Error('No variants were successfully created');
+      }
 
-    // 5. Calcular estadísticas
-    const originalSize = file.size;
-    const compressedSize = compressedOriginal.size;
-    const compressionRatio =
-      ((originalSize - compressedSize) / originalSize) * 100;
-    const totalSizeSaved = originalSize - compressedSize;
+      // Si no hay FULL en webp, usar la primera variante como fallback
+      if (!fullVariantUrl) {
+        fullVariantUrl = variants[0]?.url;
+        this.logger.warn(`⚠️ Using fallback URL: ${fullVariantUrl}`);
+      }
 
-    // 6. Crear registro de Multimedia (esto será manejado por el módulo multimedia existente)
-    // Por ahora solo retornamos la información
-    const processingTime = Date.now() - startTime;
+      // 3. Calcular estadísticas (sin original almacenado)
+      const originalSize = file.size;
+      const compressedSize = totalVariantSize;
+      const compressionRatio =
+        ((originalSize - compressedSize) / originalSize) * 100;
+      const totalSizeSaved = originalSize - compressedSize;
 
-    this.logger.log(
-      `✅ Image processed in ${processingTime}ms - Compression: ${compressionRatio.toFixed(1)}% - Variants: ${variants.length}`,
-    );
+      const processingTime = Date.now() - startTime;
 
-    return {
-      multimedia: {
-        url: originalUrl,
-        filename: file.originalname,
-        fileSize: compressedSize,
-        originalSize,
-        compressedSize,
+      this.logger.log(
+        `✅ Image processed in ${processingTime}ms - Only variants stored - Space saved: ${compressionRatio.toFixed(1)}% - Variants: ${variants.length}`,
+      );
+
+      return {
+        multimedia: {
+          url: fullVariantUrl!,
+          filename: file.originalname,
+          fileSize: compressedSize,
+          originalSize,
+          compressedSize,
+          compressionRatio,
+          width: metadata.width || 0,
+          height: metadata.height || 0,
+        } as Multimedia,
         compressionRatio,
-        width: metadata.width || 0,
-        height: metadata.height || 0,
-      } as Multimedia,
-      compressionRatio,
-      variantsCreated: variants.length,
-      totalSizeSaved,
-      variants,
-    };
+        variantsCreated: variants.length,
+        totalSizeSaved,
+        variants,
+      };
     } catch (error) {
       this.logger.error(`❌ Image processing failed: ${error?.message || String(error)}`);
       throw new Error(`Image optimization failed: ${error?.message || 'Unknown error'}`);
