@@ -39,6 +39,7 @@ async function bootstrap() {
       'http://72.61.6.232:3001',
       'http://72.61.6.232:3000',
       'http://72.61.6.232:3002',
+      'https://www.estateflow.sbs',
     ], // Permitir frontend en múltiples puertos y la IP pública
     credentials: true, // Importante para NextAuth cookies
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
