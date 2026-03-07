@@ -64,22 +64,25 @@ export class ImageOptimizationService {
       `🎨 Processing image for ${entityType}:${entityId} - Size: ${(file.size / 1024).toFixed(2)}KB`,
     );
 
-    // 1. Obtener metadata original
-    const metadata = await this.sharpProcessor.getMetadata(file.buffer);
+    try {
+      // 1. Obtener metadata original
+      const metadata = await this.sharpProcessor.getMetadata(file.buffer);
 
-    // 2. Comprimir original
-    const compressedOriginal = await this.sharpProcessor.compressOriginal(
-      file.buffer,
-      90,
-    );
+      // 2. Comprimir original
+      const compressedOriginal = await this.sharpProcessor.compressOriginal(
+        file.buffer,
+        90,
+      );
 
-    // 3. Upload original comprimida
-    const originalKey = `${entityType}/${entityId}/${imageId}_original.jpg`;
-    const { url: originalUrl } = await this.r2Storage.upload(
-      compressedOriginal.buffer,
-      originalKey,
-      'image/jpeg',
-    );
+      // 3. Upload original comprimida
+      const originalKey = `${entityType}/${entityId}/${imageId}_original.jpg`;
+      this.logger.log(`📤 Uploading original image to R2: ${originalKey}`);
+      const { url: originalUrl } = await this.r2Storage.upload(
+        compressedOriginal.buffer,
+        originalKey,
+        'image/jpeg',
+      );
+      this.logger.log(`✅ Original uploaded: ${originalUrl}`);
 
     // 4. Generar todas las variantes
     const variants: Partial<MultimediaVariant>[] = [];
@@ -88,6 +91,7 @@ export class ImageOptimizationService {
     for (const config of strategy) {
       for (const format of config.formats) {
         try {
+          this.logger.debug(`⏳ Creating ${config.type}.${format}...`);
           const processed = await this.sharpProcessor.processVariant(
             file.buffer,
             config,
@@ -118,10 +122,15 @@ export class ImageOptimizationService {
           );
         } catch (error) {
           this.logger.error(
-            `  ❌ Failed to create ${config.type}.${format}: ${error.message}`,
+            `  ❌ Failed to create ${config.type}.${format}: ${error?.message || String(error)}`,
           );
+          // Continuar con las demás variantes incluso si una falla
         }
       }
+    }
+
+    if (variants.length === 0) {
+      this.logger.warn(`⚠️ No variants were created, but original was uploaded`);
     }
 
     // 5. Calcular estadísticas
@@ -155,6 +164,10 @@ export class ImageOptimizationService {
       totalSizeSaved,
       variants,
     };
+    } catch (error) {
+      this.logger.error(`❌ Image processing failed: ${error?.message || String(error)}`);
+      throw new Error(`Image optimization failed: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   /**
