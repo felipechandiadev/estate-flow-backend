@@ -4,6 +4,7 @@ import { TeamMember } from './domain/team-member.entity';
 import { TeamMembersService } from './application/team-members.service';
 import { TeamMembersController } from './presentation/team-members.controller';
 import { MultimediaModule } from '../multimedia/multimedia.module';
+import { MediaOptimizationModule } from '../media-optimization/media-optimization.module';
 import { TeamMemberRepository } from './domain/team-member.repository';
 import { TypeormTeamMemberRepository } from './infrastructure/typeorm-team-member.repository';
 import { CreateTeamMemberUseCase } from './application/use-cases/create-team-member.usecase';
@@ -13,7 +14,7 @@ import { UpdateTeamMemberUseCase } from './application/use-cases/update-team-mem
 import { SoftDeleteTeamMemberUseCase } from './application/use-cases/soft-delete-team-member.usecase';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TeamMember]), MultimediaModule],
+  imports: [TypeOrmModule.forFeature([TeamMember]), MultimediaModule, MediaOptimizationModule],
   controllers: [TeamMembersController],
   providers: [
     TeamMembersService,

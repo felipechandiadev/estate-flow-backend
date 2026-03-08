@@ -8,6 +8,7 @@ import { Property } from '../property/domain/property.entity';
 import { AuditModule } from '../audit/audit.module';
 import { ConfigModule } from '@nestjs/config';
 import { MultimediaModule } from '../multimedia/multimedia.module';
+import { MediaOptimizationModule } from '../media-optimization/media-optimization.module';
 import { forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 
@@ -41,6 +42,7 @@ import { GridCommunityUsersUseCase } from './application/use-cases/grid-communit
     TypeOrmModule.forFeature([User, PersonOrmEntity, Property]),
     AuditModule,
     MultimediaModule,
+    MediaOptimizationModule,
     forwardRef(() => AuthModule),
   ],
   controllers: [UsersController],

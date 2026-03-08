@@ -30,6 +30,7 @@ import { Audit } from '../../../shared/interceptors/audit.interceptor';
 import { AuditAction, AuditEntityType } from '../../../shared/enums/audit.enums';
 import { MultimediaService } from '../../multimedia/application/multimedia.service';
 import { StaticFilesService } from '../../multimedia/infrastructure/storage/static-files.service';
+import { ImageOptimizationService } from '../../media-optimization/application/services/image-optimization.service';
 
 @Controller('team-members')
 @ApiTags('Team Members')
@@ -38,6 +39,7 @@ export class TeamMembersController {
     private readonly teamMembersService: TeamMembersService,
     private readonly multimediaService: MultimediaService,
     private readonly staticFilesService: StaticFilesService,
+    private readonly imageOptimization: ImageOptimizationService,
   ) {}
 
   /**
@@ -72,14 +74,23 @@ export class TeamMembersController {
     @Body(ValidationPipe) createTeamMemberDto: CreateTeamMemberDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    // Create team member first
+    const teamMember = await this.teamMembersService.create(createTeamMemberDto);
+
     if (file) {
-      // uploadFileToPath ya devuelve la URL correcta (R2 o local según configuración)
-      createTeamMemberDto.multimediaUrl = await this.multimediaService.uploadFileToPath(
+      // Use image optimization service with avatar strategy
+      const result = await this.imageOptimization.processAndUpload(
         file,
-        'web/team-members',
+        'avatar',
+        teamMember.id,
       );
+      // Update team member with optimized avatar URL
+      await this.teamMembersService.update(teamMember.id, {
+        multimediaUrl: result.multimedia.url,
+      });
     }
-    return this.teamMembersService.create(createTeamMemberDto);
+
+    return this.teamMembersService.findOne(teamMember.id);
   }
 
   /**
@@ -151,11 +162,13 @@ export class TeamMembersController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (file) {
-      // uploadFileToPath ya devuelve la URL correcta (R2 o local según configuración)
-      updateTeamMemberDto.multimediaUrl = await this.multimediaService.uploadFileToPath(
+      // Use image optimization service with avatar strategy
+      const result = await this.imageOptimization.processAndUpload(
         file,
-        'web/team-members',
+        'avatar',
+        id,
       );
+      updateTeamMemberDto.multimediaUrl = result.multimedia.url;
     }
     return this.teamMembersService.update(id, updateTeamMemberDto);
   }
